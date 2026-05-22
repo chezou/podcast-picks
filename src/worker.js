@@ -218,8 +218,9 @@ async function generateOgImage(data) {
   return pngData.asPng();
 }
 
-// ─── Inject OGP meta tags into index.html ────────────────────
-function injectOgTags(html, data, url) {
+// ─── Build OGP meta tags HTML ────────────────────────────────
+function buildOgTags(data, url) {
+  const esc = (s) => s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   const title = `${data.name}'s Top 3 Podcasts`;
   const description = data.picks
     .slice(0, 3)
@@ -228,26 +229,16 @@ function injectOgTags(html, data, url) {
   const parsed = new URL(url);
   const ogImageUrl = `${parsed.origin}/og?d=${encodeURIComponent(parsed.searchParams.get("d"))}`;
 
-  const ogTags = `
+  return `
     <meta property="og:type" content="website" />
-    <meta property="og:title" content="${escapeAttr(title)}" />
-    <meta property="og:description" content="${escapeAttr(description)}" />
-    <meta property="og:image" content="${escapeAttr(ogImageUrl)}" />
-    <meta property="og:url" content="${escapeAttr(url)}" />
+    <meta property="og:title" content="${esc(title)}" />
+    <meta property="og:description" content="${esc(description)}" />
+    <meta property="og:image" content="${esc(ogImageUrl)}" />
+    <meta property="og:url" content="${esc(url)}" />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="${escapeAttr(title)}" />
-    <meta name="twitter:description" content="${escapeAttr(description)}" />
-    <meta name="twitter:image" content="${escapeAttr(ogImageUrl)}" />
-    <title>${escapeHtml(title)} | podcast-picks</title>`;
-
-  return html.replace("</head>", `${ogTags}\n  </head>`);
-}
-
-function escapeAttr(s) {
-  return s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-}
-function escapeHtml(s) {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    <meta name="twitter:title" content="${esc(title)}" />
+    <meta name="twitter:description" content="${esc(description)}" />
+    <meta name="twitter:image" content="${esc(ogImageUrl)}" />`;
 }
 
 // ─── Worker entry ────────────────────────────────────────────
@@ -278,25 +269,26 @@ export default {
       }
     }
 
-    // For ?d= requests on the root, inject OGP tags
+    // For ?d= requests on the root, inject OGP tags via HTMLRewriter
     const param = url.searchParams.get("d");
     if (url.pathname === "/" && param) {
       const data = decodeState(param);
       if (data && data.picks.length > 0) {
-        try {
-          const assetUrl = new URL("/", url.origin);
-          const assetRes = await env.ASSETS.fetch(new Request(assetUrl.toString()));
-          const html = await assetRes.text();
-          const injected = injectOgTags(html, data, url.toString());
-          return new Response(injected, {
-            headers: {
-              "Content-Type": "text/html; charset=utf-8",
-              "Cache-Control": "public, max-age=300",
+        const title = `${data.name}'s Top 3 Podcasts | podcast-picks`;
+        const ogHtml = buildOgTags(data, url.toString());
+        const res = await env.ASSETS.fetch(request);
+        return new HTMLRewriter()
+          .on("head", {
+            element(el) {
+              el.append(ogHtml, { html: true });
             },
-          });
-        } catch (e) {
-          console.error("OGP injection failed:", e);
-        }
+          })
+          .on("title", {
+            element(el) {
+              el.setInnerContent(title);
+            },
+          })
+          .transform(res);
       }
     }
 
