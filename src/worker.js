@@ -39,16 +39,20 @@ async function generateOgImage(data) {
     wasmInitialized = true;
   }
 
-  const [sora400, sora700] = await Promise.all([
+  const [sora400, sora700, noto400, noto700] = await Promise.all([
     loadGoogleFont("Sora", 400),
     loadGoogleFont("Sora", 700),
+    loadGoogleFont("Noto Sans JP", 400),
+    loadGoogleFont("Noto Sans JP", 700),
   ]);
 
-  const accent = "#c9a0ff";
-  const bg = "#120c18";
-  const card = "#1e1428";
-  const text = "#f0eef5";
-  const sub = "#c0b0d0";
+  // Light mode palette
+  const accent = "#7b4cb8";
+  const bg = "#f8f4fc";
+  const card = "#ffffff";
+  const text = "#1e1428";
+  const sub = "#5a4a6a";
+  const border = "rgba(123,76,184,0.15)";
   const nums = ["①", "②", "③"];
 
   const jsx = {
@@ -59,9 +63,9 @@ async function generateOgImage(data) {
         flexDirection: "column",
         width: "100%",
         height: "100%",
-        background: `linear-gradient(135deg, ${bg} 0%, #0a0a1a 100%)`,
+        background: `linear-gradient(135deg, ${bg} 0%, #eceaf0 100%)`,
         padding: "60px 70px",
-        fontFamily: "Sora",
+        fontFamily: "Sora, 'Noto Sans JP'",
       },
       children: [
         // Header
@@ -118,7 +122,8 @@ async function generateOgImage(data) {
                   background: card,
                   borderRadius: 16,
                   padding: "20px 28px",
-                  border: `1px solid ${accent}22`,
+                  border: `1px solid ${border}`,
+                  boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
                 },
                 children: [
                   {
@@ -201,6 +206,8 @@ async function generateOgImage(data) {
     fonts: [
       { name: "Sora", data: sora400, weight: 400, style: "normal" },
       { name: "Sora", data: sora700, weight: 700, style: "normal" },
+      { name: "Noto Sans JP", data: noto400, weight: 400, style: "normal" },
+      { name: "Noto Sans JP", data: noto700, weight: 700, style: "normal" },
     ],
   });
 
@@ -276,12 +283,20 @@ export default {
     if (url.pathname === "/" && param) {
       const data = decodeState(param);
       if (data && data.picks.length > 0) {
-        const assetRes = await env.ASSETS.fetch(new URL("/", url.origin));
-        const html = await assetRes.text();
-        const injected = injectOgTags(html, data, url.toString());
-        return new Response(injected, {
-          headers: { "Content-Type": "text/html; charset=utf-8" },
-        });
+        try {
+          const assetUrl = new URL("/", url.origin);
+          const assetRes = await env.ASSETS.fetch(new Request(assetUrl.toString()));
+          const html = await assetRes.text();
+          const injected = injectOgTags(html, data, url.toString());
+          return new Response(injected, {
+            headers: {
+              "Content-Type": "text/html; charset=utf-8",
+              "Cache-Control": "public, max-age=300",
+            },
+          });
+        } catch (e) {
+          console.error("OGP injection failed:", e);
+        }
       }
     }
 
