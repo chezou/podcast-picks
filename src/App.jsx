@@ -582,14 +582,6 @@ function Editor({ scheme, onToggleScheme }) {
           }}>{shareUrl}</div>
         )}
 
-        <p style={{
-          fontSize: 11, color: t.note, textAlign: "center",
-          marginTop: 20, lineHeight: 1.7,
-          fontFamily: "'Space Mono', monospace",
-        }}>
-          データはURLに含まれるのでサーバー不要<br />
-          アートワークはタイトルから自動取得
-        </p>
       </div>
     </div>
   );
