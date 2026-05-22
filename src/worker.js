@@ -85,7 +85,7 @@ async function generateOgImage(data) {
                     fontWeight: 700,
                     marginBottom: 12,
                   },
-                  children: "🎧 MY TOP 3 PODCASTS",
+                  children: "MY TOP 3 PODCASTS",
                 },
               },
               {
