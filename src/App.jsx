@@ -131,16 +131,16 @@ function usePodcastInfo(title) {
 // ─── Palette (light / dark) ────────────────────────────────
 const PALETTES = {
   dark: [
-    { bg: "#0c0c1d", card: "#141430", accent: "#ff6b6b", text: "#f0f0f0", sub: "#8888aa", glow: "rgba(255,107,107,0.08)", shadow: "rgba(0,0,0,0.5)" },
-    { bg: "#0a0f1a", card: "#111b2e", accent: "#64dfdf", text: "#eef",    sub: "#7799aa", glow: "rgba(100,223,223,0.08)", shadow: "rgba(0,0,0,0.5)" },
-    { bg: "#120c18", card: "#1e1428", accent: "#c9a0ff", text: "#f0eef5", sub: "#9988aa", glow: "rgba(201,160,255,0.08)", shadow: "rgba(0,0,0,0.5)" },
-    { bg: "#0f1410", card: "#182018", accent: "#95e77e", text: "#eef0ee", sub: "#88aa88", glow: "rgba(149,231,126,0.08)", shadow: "rgba(0,0,0,0.5)" },
+    { bg: "#0c0c1d", card: "#141430", accent: "#ff6b6b", text: "#f0f0f0", sub: "#b8b8d0", glow: "rgba(255,107,107,0.08)", shadow: "rgba(0,0,0,0.5)" },
+    { bg: "#0a0f1a", card: "#111b2e", accent: "#64dfdf", text: "#eef",    sub: "#a8c8d0", glow: "rgba(100,223,223,0.08)", shadow: "rgba(0,0,0,0.5)" },
+    { bg: "#120c18", card: "#1e1428", accent: "#c9a0ff", text: "#f0eef5", sub: "#c0b0d0", glow: "rgba(201,160,255,0.08)", shadow: "rgba(0,0,0,0.5)" },
+    { bg: "#0f1410", card: "#182018", accent: "#95e77e", text: "#eef0ee", sub: "#b0d0b0", glow: "rgba(149,231,126,0.08)", shadow: "rgba(0,0,0,0.5)" },
   ],
   light: [
-    { bg: "#faf7f7", card: "#ffffff", accent: "#d94555", text: "#1a1a2e", sub: "#7a7a90", glow: "rgba(217,69,85,0.06)",  shadow: "rgba(0,0,0,0.08)" },
-    { bg: "#f4fafa", card: "#ffffff", accent: "#1a9e9e", text: "#102028", sub: "#5a7a80", glow: "rgba(26,158,158,0.06)", shadow: "rgba(0,0,0,0.08)" },
-    { bg: "#f8f4fc", card: "#ffffff", accent: "#7b4cb8", text: "#1e1428", sub: "#7a6a8a", glow: "rgba(123,76,184,0.06)", shadow: "rgba(0,0,0,0.08)" },
-    { bg: "#f3f8f2", card: "#ffffff", accent: "#3a8a2a", text: "#141e14", sub: "#6a8a6a", glow: "rgba(58,138,42,0.06)", shadow: "rgba(0,0,0,0.08)" },
+    { bg: "#faf7f7", card: "#ffffff", accent: "#d94555", text: "#1a1a2e", sub: "#555568", glow: "rgba(217,69,85,0.06)",  shadow: "rgba(0,0,0,0.08)" },
+    { bg: "#f4fafa", card: "#ffffff", accent: "#1a9e9e", text: "#102028", sub: "#3a5a62", glow: "rgba(26,158,158,0.06)", shadow: "rgba(0,0,0,0.08)" },
+    { bg: "#f8f4fc", card: "#ffffff", accent: "#7b4cb8", text: "#1e1428", sub: "#5a4a6a", glow: "rgba(123,76,184,0.06)", shadow: "rgba(0,0,0,0.08)" },
+    { bg: "#f3f8f2", card: "#ffffff", accent: "#3a8a2a", text: "#141e14", sub: "#4a6a4a", glow: "rgba(58,138,42,0.06)", shadow: "rgba(0,0,0,0.08)" },
   ],
 };
 function getPalette(name, scheme) {
@@ -286,7 +286,7 @@ function PodcastCard({ pick, index, total, palette: p, isDark, revealed }) {
           {pick.reason && (
             <p style={{
               fontSize: 13, color: p.sub, margin: "8px 0 0",
-              lineHeight: 1.55, fontWeight: 300, wordBreak: "break-word",
+              lineHeight: 1.55, fontWeight: 400, wordBreak: "break-word",
             }}>{pick.reason}</p>
           )}
         </div>
