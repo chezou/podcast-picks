@@ -274,21 +274,26 @@ export default {
     if (url.pathname === "/" && param) {
       const data = decodeState(param);
       if (data && data.picks.length > 0) {
-        const title = `${data.name}'s Top 3 Podcasts | podcast-picks`;
-        const ogHtml = buildOgTags(data, url.toString());
-        const res = await env.ASSETS.fetch(request);
-        return new HTMLRewriter()
-          .on("head", {
-            element(el) {
-              el.append(ogHtml, { html: true });
-            },
-          })
-          .on("title", {
-            element(el) {
-              el.setInnerContent(title);
-            },
-          })
-          .transform(res);
+        try {
+          const title = `${data.name}'s Top 3 Podcasts | podcast-picks`;
+          const ogHtml = buildOgTags(data, url.toString());
+          // Fetch base HTML with a clean request (no query params)
+          const res = await env.ASSETS.fetch(new Request(url.origin + "/"));
+          return new HTMLRewriter()
+            .on("head", {
+              element(el) {
+                el.append(ogHtml, { html: true });
+              },
+            })
+            .on("title", {
+              element(el) {
+                el.setInnerContent(title);
+              },
+            })
+            .transform(res);
+        } catch (e) {
+          return new Response(`OGP injection error: ${e.message}\n${e.stack}`, { status: 500 });
+        }
       }
     }
 
