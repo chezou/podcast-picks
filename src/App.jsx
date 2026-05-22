@@ -418,7 +418,7 @@ function Editor({ scheme, onToggleScheme }) {
 
   const shareUrl = (() => {
     if (!isValid) return "";
-    return `${window.location.origin}${window.location.pathname}?d=${encodeState(name.trim(), filledPicks)}`;
+    return `${window.location.origin}${window.location.pathname}?d=${encodeURIComponent(encodeState(name.trim(), filledPicks))}`;
   })();
 
   const handleCopy = async () => {
@@ -547,7 +547,7 @@ function Editor({ scheme, onToggleScheme }) {
             onClick={() => {
               if (!isValid) return;
               const url = new URL(window.location);
-              url.search = `?d=${encodeState(name.trim(), filledPicks)}`;
+              url.searchParams.set("d", encodeState(name.trim(), filledPicks));
               url.hash = "";
               window.location.href = url.toString();
             }}
@@ -608,7 +608,7 @@ export default function App() {
       const data = decodeState(hash);
       if (data && data.picks.length > 0) {
         const url = new URL(window.location);
-        url.search = `?d=${hash}`;
+        url.searchParams.set("d", hash);
         url.hash = "";
         window.location.replace(url.toString());
         return;

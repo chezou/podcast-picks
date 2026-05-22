@@ -218,7 +218,8 @@ function injectOgTags(html, data, url) {
     .slice(0, 3)
     .map((p, i) => `${i + 1}. ${p.title}`)
     .join(" / ");
-  const ogImageUrl = `${new URL(url).origin}/og?d=${new URL(url).searchParams.get("d")}`;
+  const parsed = new URL(url);
+  const ogImageUrl = `${parsed.origin}/og?d=${encodeURIComponent(parsed.searchParams.get("d"))}`;
 
   const ogTags = `
     <meta property="og:type" content="website" />
