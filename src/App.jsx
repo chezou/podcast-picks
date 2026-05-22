@@ -381,7 +381,7 @@ function CardView({ name, picks, scheme, onToggleScheme }) {
             onMouseLeave={e => e.currentTarget.style.opacity = "1"}
           >{copied ? "✅ コピー完了！" : "🔗 シェアする"}</button>
           <button
-            onClick={() => { window.location.hash = ""; window.location.reload(); }}
+            onClick={() => { window.location.href = window.location.pathname; }}
             style={{
               fontFamily: "'Sora', sans-serif", fontSize: 13, fontWeight: 500,
               color: p.accent, background: `${p.accent}10`,
@@ -418,7 +418,7 @@ function Editor({ scheme, onToggleScheme }) {
 
   const shareUrl = (() => {
     if (!isValid) return "";
-    return `${window.location.origin}${window.location.pathname}#${encodeState(name.trim(), filledPicks)}`;
+    return `${window.location.origin}${window.location.pathname}?d=${encodeState(name.trim(), filledPicks)}`;
   })();
 
   const handleCopy = async () => {
@@ -546,7 +546,10 @@ function Editor({ scheme, onToggleScheme }) {
             disabled={!isValid}
             onClick={() => {
               if (!isValid) return;
-              window.location.hash = encodeState(name.trim(), filledPicks);
+              const url = new URL(window.location);
+              url.search = `?d=${encodeState(name.trim(), filledPicks)}`;
+              url.hash = "";
+              window.location.href = url.toString();
             }}
             style={{
               flex: 1, minWidth: 130,
@@ -599,21 +602,29 @@ export default function App() {
     link.href = FONTS_URL;
     document.head.appendChild(link);
 
-    const checkHash = () => {
-      const hash = window.location.hash.slice(1);
-      if (hash) {
-        const data = decodeState(hash);
-        if (data && data.picks.length > 0) {
-          setViewData(data);
-          setMode("view");
-          return;
-        }
+    // Migrate old #hash URLs to ?d= and redirect
+    const hash = window.location.hash.slice(1);
+    if (hash) {
+      const data = decodeState(hash);
+      if (data && data.picks.length > 0) {
+        const url = new URL(window.location);
+        url.search = `?d=${hash}`;
+        url.hash = "";
+        window.location.replace(url.toString());
+        return;
       }
-      setMode("edit");
-    };
-    checkHash();
-    window.addEventListener("hashchange", checkHash);
-    return () => window.removeEventListener("hashchange", checkHash);
+    }
+
+    const param = new URLSearchParams(window.location.search).get("d");
+    if (param) {
+      const data = decodeState(param);
+      if (data && data.picks.length > 0) {
+        setViewData(data);
+        setMode("view");
+        return;
+      }
+    }
+    setMode("edit");
   }, []);
 
   if (mode === "loading") return null;

@@ -1,7 +1,12 @@
 {
   "name": "podcast-picks",
   "compatibility_date": "2026-05-22",
+  "main": "src/worker.js",
   "assets": {
-    "directory": "./dist"
+    "directory": "./dist",
+    "binding": "ASSETS"
+  },
+  "observability": {
+    "enabled": true
   }
 }
