@@ -1,16 +1,28 @@
-# React + Vite
+# podcast-picks
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Share your top 3 podcast picks as a beautiful card — no server required.
 
-Currently, two official plugins are available:
+## Features
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- **Title-only input** — artwork is auto-fetched from iTunes Search
+- **Auto-generated links** — Apple Podcasts (direct) + Spotify (search) + optional custom URL
+- **Light / Dark mode** — follows OS `prefers-color-scheme`, with manual toggle
+- **Name-based color palettes** — each person gets a unique accent color
+- **Shareable via URL** — all data is encoded in the hash fragment, zero backend
 
-## React Compiler
+## Usage
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+1. Enter your display name
+2. Add up to 3 podcast titles (and optional reasons / links)
+3. Preview → Copy link → Share anywhere
 
-## Expanding the ESLint configuration
+## Development
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+```bash
+npm install
+npm run dev
+```
+
+## Tech
+
+React + Vite, single `App.jsx`, no CSS files, no backend.
