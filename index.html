@@ -2,9 +2,15 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <meta name="color-scheme" content="light dark" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>podcast-picks</title>
+    <style>
+      body { margin: 0; transition: background-color 0.3s; }
+      @media (prefers-color-scheme: dark)  { body { background: #050510; } }
+      @media (prefers-color-scheme: light) { body { background: #f0eef4; } }
+    </style>
   </head>
   <body>
     <div id="root"></div>
