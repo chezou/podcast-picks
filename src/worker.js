@@ -4,9 +4,27 @@ import resvgWasm from "@resvg/resvg-wasm/index_bg.wasm";
 
 let wasmInitialized = false;
 
-// ─── Decode the shared state from ?d= param ──────────────────
-function decodeState(encoded) {
+// ─── Decode the shared state from ?d= param (v1 + v2) ───────
+async function decodeState(encoded, version) {
   try {
+    if (version === "2") {
+      // v2: deflate-raw compressed array format
+      const bytes = Uint8Array.from(atob(encoded), c => c.charCodeAt(0));
+      const ds = new DecompressionStream("deflate-raw");
+      const writer = ds.writable.getWriter();
+      writer.write(bytes);
+      writer.close();
+      const arr = JSON.parse(await new Response(ds.readable).text());
+      return {
+        name: arr[0] || "",
+        picks: (arr[1] || []).map((p) => ({
+          title: p[0] || "",
+          reason: p[1] || "",
+          url: p[2] || "",
+        })),
+      };
+    }
+    // v1: legacy JSON format
     const json = JSON.parse(decodeURIComponent(escape(atob(encoded))));
     return {
       name: json.n || "",
@@ -252,7 +270,7 @@ export default {
       if (!encoded) {
         return new Response("Missing ?d= parameter", { status: 400 });
       }
-      const data = decodeState(encoded);
+      const data = await decodeState(encoded, url.searchParams.get("v"));
       if (!data || data.picks.length === 0) {
         return new Response("Invalid data", { status: 400 });
       }
@@ -272,7 +290,7 @@ export default {
     // For ?d= requests on the root, inject OGP tags via HTMLRewriter
     const param = url.searchParams.get("d");
     if (url.pathname === "/" && param) {
-      const data = decodeState(param);
+      const data = await decodeState(param, url.searchParams.get("v"));
       if (data && data.picks.length > 0) {
         try {
           const title = `${data.name}'s Top 3 Podcasts | podcast-picks`;

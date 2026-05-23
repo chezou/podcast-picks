@@ -60,18 +60,37 @@ function ThemeToggle({ scheme, onToggle, accentColor }) {
   );
 }
 
-// ─── State encoding ─────────────────────────────────────────
-function encodeState(name, picks) {
-  const data = {
-    n: name,
-    p: picks.map(p => ({ t: p.title, r: p.reason || "", u: p.url || "" })),
-  };
-  return btoa(unescape(encodeURIComponent(JSON.stringify(data))));
+// ─── State encoding (v2: deflate-raw + array) ──────────────
+async function encodeState(name, picks) {
+  const arr = [name, picks.map(p => [p.title, p.reason || "", p.url || ""])];
+  const json = new TextEncoder().encode(JSON.stringify(arr));
+  const cs = new CompressionStream("deflate-raw");
+  const writer = cs.writable.getWriter();
+  writer.write(json);
+  writer.close();
+  const buf = await new Response(cs.readable).arrayBuffer();
+  return btoa(String.fromCharCode(...new Uint8Array(buf)));
 }
 
-function decodeState(hash) {
+async function decodeState(encoded, version) {
   try {
-    const json = JSON.parse(decodeURIComponent(escape(atob(hash))));
+    if (version === "2") {
+      // v2: deflate-raw compressed array format
+      const bytes = Uint8Array.from(atob(encoded), c => c.charCodeAt(0));
+      const ds = new DecompressionStream("deflate-raw");
+      const writer = ds.writable.getWriter();
+      writer.write(bytes);
+      writer.close();
+      const arr = JSON.parse(await new Response(ds.readable).text());
+      return {
+        name: arr[0] || "",
+        picks: (arr[1] || []).map((p, i) => ({
+          id: i, title: p[0] || "", reason: p[1] || "", url: p[2] || "",
+        })),
+      };
+    }
+    // v1: legacy JSON format (backward compat)
+    const json = JSON.parse(decodeURIComponent(escape(atob(encoded))));
     return {
       name: json.n || "",
       picks: (json.p || []).map((p, i) => ({
@@ -92,38 +111,51 @@ function normalizeUrl(url) {
 
 // ─── Fetch podcast info from iTunes Search ──────────────────
 async function fetchPodcastInfo(title) {
-  if (!title) return { artwork: null, appleUrl: null };
+  if (!title) return { artwork: null, appleUrl: null, name: null, candidates: [] };
   try {
     const res = await fetch(
-      `https://itunes.apple.com/search?term=${encodeURIComponent(title)}&media=podcast&limit=3&lang=ja_jp`
+      `https://itunes.apple.com/search?term=${encodeURIComponent(title)}&media=podcast&limit=5&lang=ja_jp`
     );
     const data = await res.json();
     const results = data.results || [];
+    const candidates = results.map(r => ({
+      name: r.collectionName || r.trackName || "",
+      artwork: (r.artworkUrl600 || r.artworkUrl100 || "").replace("100x100", "600x600"),
+      appleUrl: r.collectionViewUrl || r.trackViewUrl || null,
+    }));
     const normalize = s => s.toLowerCase().replace(/[\s\-_.:!?]+/g, "");
     const norm = normalize(title);
     const exact = results.find(r =>
       normalize(r.collectionName || "") === norm || normalize(r.trackName || "") === norm
     );
     const best = exact || results[0];
-    if (!best) return { artwork: null, appleUrl: null };
+    if (!best) return { artwork: null, appleUrl: null, name: null, candidates };
     const artwork = (best.artworkUrl600 || best.artworkUrl100 || "").replace("100x100", "600x600");
     const appleUrl = best.collectionViewUrl || best.trackViewUrl || null;
-    return { artwork, appleUrl };
-  } catch { return { artwork: null, appleUrl: null }; }
+    const name = best.collectionName || best.trackName || null;
+    return { artwork, appleUrl, name, candidates };
+  } catch { return { artwork: null, appleUrl: null, name: null, candidates: [] }; }
 }
 
-function usePodcastInfo(title) {
-  const [info, setInfo] = useState({ artwork: null, appleUrl: null, loading: false });
+function usePodcastInfo(title, debounceMs = 0) {
+  const [info, setInfo] = useState({ artwork: null, appleUrl: null, name: null, candidates: [], loading: false });
+  const [debounced, setDebounced] = useState(title);
 
   useEffect(() => {
-    if (!title) { setInfo({ artwork: null, appleUrl: null, loading: false }); return; }
+    if (debounceMs <= 0) { setDebounced(title); return; }
+    const timer = setTimeout(() => setDebounced(title), debounceMs);
+    return () => clearTimeout(timer);
+  }, [title, debounceMs]);
+
+  useEffect(() => {
+    if (!debounced) { setInfo({ artwork: null, appleUrl: null, name: null, candidates: [], loading: false }); return; }
     let cancelled = false;
     setInfo(prev => ({ ...prev, loading: true }));
-    fetchPodcastInfo(title).then(result => {
+    fetchPodcastInfo(debounced).then(result => {
       if (!cancelled) setInfo({ ...result, loading: false });
     });
     return () => { cancelled = true; };
-  }, [title]);
+  }, [debounced]);
 
   return info;
 }
@@ -305,7 +337,7 @@ function PodcastCard({ pick, index, total, palette: p, isDark, revealed }) {
 }
 
 // ─── CardView ───────────────────────────────────────────────
-function CardView({ name, picks, scheme, onToggleScheme }) {
+function CardView({ name, picks, scheme, onToggleScheme, isOwnPreview, onBackToEdit, onCreateOwn }) {
   const p = getPalette(name, scheme);
   const isDark = scheme === "dark";
   const [revealed, setRevealed] = useState(false);
@@ -381,7 +413,7 @@ function CardView({ name, picks, scheme, onToggleScheme }) {
             onMouseLeave={e => e.currentTarget.style.opacity = "1"}
           >{copied ? "✅ コピー完了！" : "🔗 シェアする"}</button>
           <button
-            onClick={() => { window.location.href = window.location.pathname; }}
+            onClick={isOwnPreview ? onBackToEdit : onCreateOwn}
             style={{
               fontFamily: "'Sora', sans-serif", fontSize: 13, fontWeight: 500,
               color: p.accent, background: `${p.accent}10`,
@@ -390,23 +422,211 @@ function CardView({ name, picks, scheme, onToggleScheme }) {
             }}
             onMouseEnter={e => e.currentTarget.style.background = `${p.accent}25`}
             onMouseLeave={e => e.currentTarget.style.background = `${p.accent}10`}
-          >✨ 自分のも作る</button>
+          >{isOwnPreview ? "✏️ 編集に戻る" : "✨ 自分のも作る"}</button>
         </div>
       </div>
     </div>
   );
 }
 
-// ─── Editor ─────────────────────────────────────────────────
-function Editor({ scheme, onToggleScheme }) {
-  const t = EDITOR_THEMES[scheme] || EDITOR_THEMES.dark;
+// ─── Editor pick card (with artwork preview) ───────────────
+function EditorPick({ pick, index, theme: t, updatePick, NUM }) {
+  const { artwork, loading, name: suggestedName, candidates } = usePodcastInfo(pick.title, 500);
+  const isDark = t === EDITOR_THEMES.dark;
+  const [artworkDismissed, setArtworkDismissed] = useState(false);
+  const [dropdownOpen, setDropdownOpen] = useState(false);
 
-  const [name, setName] = useState("");
-  const [picks, setPicks] = useState([
-    { id: 0, title: "", reason: "", url: "" },
-    { id: 1, title: "", reason: "", url: "" },
-    { id: 2, title: "", reason: "", url: "" },
-  ]);
+  // Reset dismissed when search result changes
+  useEffect(() => { setArtworkDismissed(false); }, [artwork]);
+
+  const showArtwork = pick.title.trim() && !artworkDismissed;
+
+  // Dropdown candidates (exclude exact match)
+  const dropdownCandidates = (dropdownOpen && pick.title.trim())
+    ? candidates.filter(c => c.name !== pick.title)
+    : [];
+
+  const handleSelect = (candidate) => {
+    updatePick(pick.id, "title", candidate.name);
+    setDropdownOpen(false);
+  };
+
+  // Ghost autocomplete
+  const completionText = (() => {
+    if (!suggestedName || !pick.title.trim()) return null;
+    if (suggestedName.toLowerCase().startsWith(pick.title.toLowerCase()) && suggestedName !== pick.title) {
+      return suggestedName.slice(pick.title.length);
+    }
+    return null;
+  })();
+
+  const handleKeyDown = (e) => {
+    if (e.key === "Tab" && completionText) {
+      e.preventDefault();
+      updatePick(pick.id, "title", pick.title + completionText);
+      setDropdownOpen(false);
+    }
+    if (e.key === "Escape") setDropdownOpen(false);
+  };
+
+  const titleInputStyle = {
+    fontFamily: "'Sora', sans-serif", fontSize: 15,
+    padding: "10px 14px", lineHeight: "1.5",
+  };
+
+  return (
+    <div style={{
+      background: t.card, borderRadius: 16, padding: 20,
+      marginBottom: 14, border: `1px solid ${t.borderLight}`,
+    }}>
+      <div style={{
+        fontSize: 13, color: t.accent,
+        fontFamily: "'Space Mono', monospace",
+        fontWeight: 700, marginBottom: 14, letterSpacing: 1,
+      }}>{NUM[index]} PICK</div>
+
+      <div style={{ display: "flex", gap: 14, alignItems: "flex-start" }}>
+        {/* Artwork preview */}
+        {showArtwork && (
+          <div style={{ position: "relative", flexShrink: 0 }}>
+            <ArtworkImg
+              src={artwork} loading={loading} size={48} radius={10}
+              accentColor={t.accent}
+              loadingBg={isDark ? "#1a1a36" : "#e0dee4"}
+              fallbackBg={`${t.accent}${isDark ? "12" : "0c"}`}
+              shadowColor={isDark ? "rgba(0,0,0,0.5)" : "rgba(0,0,0,0.08)"}
+            />
+            {artwork && !loading && (
+              <button
+                onClick={() => setArtworkDismissed(true)}
+                aria-label="アートワークを非表示"
+                style={{
+                  position: "absolute", top: -6, right: -6,
+                  width: 18, height: 18, borderRadius: "50%",
+                  background: isDark ? "rgba(255,255,255,0.2)" : "rgba(0,0,0,0.4)",
+                  color: "#fff", border: "none", fontSize: 11,
+                  cursor: "pointer", padding: 0, lineHeight: 1,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                }}
+              >×</button>
+            )}
+          </div>
+        )}
+
+        <div style={{ flex: 1, minWidth: 0 }}>
+          {/* Title input with ghost autocomplete + dropdown */}
+          <div style={{ position: "relative", marginBottom: 8 }}>
+            <input
+              type="text" value={pick.title}
+              onChange={e => { updatePick(pick.id, "title", e.target.value); setDropdownOpen(true); }}
+              onFocus={() => setDropdownOpen(true)}
+              onBlur={() => setDropdownOpen(false)}
+              onKeyDown={handleKeyDown}
+              placeholder="ポッドキャスト名"
+              maxLength={80}
+              autoComplete="off"
+              style={{
+                width: "100%", boxSizing: "border-box",
+                ...titleInputStyle,
+                background: t.input,
+                border: `1px solid ${t.border}`, borderRadius: 8,
+                color: t.textInput, outline: "none",
+              }}
+            />
+            {/* Ghost completion text */}
+            {completionText && (
+              <div
+                aria-hidden="true"
+                style={{
+                  position: "absolute", top: 0, left: 0, right: 0, bottom: 0,
+                  ...titleInputStyle,
+                  pointerEvents: "none",
+                  whiteSpace: "nowrap", overflow: "hidden",
+                  borderRadius: 8,
+                  border: "1px solid transparent",
+                }}
+              >
+                <span style={{ visibility: "hidden" }}>{pick.title}</span>
+                <span style={{ color: t.sub, opacity: 0.4 }}>{completionText}</span>
+              </div>
+            )}
+            {/* Dropdown candidates */}
+            {dropdownCandidates.length > 0 && (
+              <div style={{
+                position: "absolute", top: "100%", left: 0, right: 0,
+                background: t.card,
+                border: `1px solid ${isDark ? "#ffffff15" : "#00000012"}`,
+                borderRadius: 10, marginTop: 4, zIndex: 20,
+                boxShadow: isDark ? "0 8px 24px rgba(0,0,0,0.4)" : "0 8px 24px rgba(0,0,0,0.1)",
+                overflow: "hidden",
+              }}>
+                {dropdownCandidates.map((c, i) => (
+                  <div
+                    key={i}
+                    onMouseDown={e => e.preventDefault()}
+                    onClick={() => handleSelect(c)}
+                    style={{
+                      display: "flex", alignItems: "center", gap: 10,
+                      padding: "8px 12px", cursor: "pointer",
+                      borderBottom: i < dropdownCandidates.length - 1 ? `1px solid ${t.borderLight}` : "none",
+                      transition: "background 0.1s",
+                    }}
+                    onMouseEnter={e => e.currentTarget.style.background = isDark ? "#ffffff08" : "#00000004"}
+                    onMouseLeave={e => e.currentTarget.style.background = "transparent"}
+                  >
+                    {c.artwork && (
+                      <img src={c.artwork} alt="" style={{
+                        width: 32, height: 32, borderRadius: 6, objectFit: "cover", flexShrink: 0,
+                      }} />
+                    )}
+                    <span style={{
+                      fontSize: 13, color: t.textInput,
+                      overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                    }}>{c.name}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <input
+            type="url" value={pick.url}
+            onChange={e => updatePick(pick.id, "url", e.target.value)}
+            placeholder="リンク（任意 / 番組サイト等。Apple・Spotifyは自動）"
+            style={{
+              width: "100%", boxSizing: "border-box",
+              fontFamily: "'Space Mono', monospace", fontSize: 12,
+              padding: "10px 14px", background: t.input,
+              border: `1px solid ${t.border}`, borderRadius: 8,
+              color: t.urlText, outline: "none", marginBottom: 8,
+            }}
+          />
+        </div>
+      </div>
+
+      <textarea
+        value={pick.reason}
+        onChange={e => updatePick(pick.id, "reason", e.target.value)}
+        placeholder="おすすめの理由（任意）"
+        maxLength={140} rows={2}
+        style={{
+          width: "100%", boxSizing: "border-box",
+          fontFamily: "'Sora', sans-serif", fontSize: 13,
+          padding: "10px 14px", background: t.input,
+          border: `1px solid ${t.border}`, borderRadius: 8,
+          color: t.reasonText, outline: "none", resize: "none",
+        }}
+      />
+      <div style={{ textAlign: "right", fontSize: 11, color: t.counter, marginTop: 2 }}>
+        {pick.reason.length}/140
+      </div>
+    </div>
+  );
+}
+
+// ─── Editor ─────────────────────────────────────────────────
+function Editor({ name, setName, picks, setPicks, scheme, onToggleScheme, onPreview }) {
+  const t = EDITOR_THEMES[scheme] || EDITOR_THEMES.dark;
   const [copied, setCopied] = useState(false);
 
   const updatePick = (id, field, value) => {
@@ -416,10 +636,20 @@ function Editor({ scheme, onToggleScheme }) {
   const filledPicks = picks.filter(p => p.title.trim());
   const isValid = name.trim() && filledPicks.length >= 1;
 
-  const shareUrl = (() => {
-    if (!isValid) return "";
-    return `${window.location.origin}${window.location.pathname}?d=${encodeURIComponent(encodeState(name.trim(), filledPicks))}`;
-  })();
+  const [shareUrl, setShareUrl] = useState("");
+  const picksKey = JSON.stringify(picks.map(p => [p.title, p.reason, p.url]));
+  useEffect(() => {
+    const filled = picks.filter(p => p.title.trim());
+    const valid = name.trim() && filled.length >= 1;
+    if (!valid) { setShareUrl(""); return; }
+    let cancelled = false;
+    encodeState(name.trim(), filled).then(encoded => {
+      if (!cancelled) {
+        setShareUrl(`${window.location.origin}${window.location.pathname}?v=2&d=${encodeURIComponent(encoded)}`);
+      }
+    });
+    return () => { cancelled = true; };
+  }, [name, picksKey]);
 
   const handleCopy = async () => {
     if (!shareUrl) return;
@@ -484,73 +714,14 @@ function Editor({ scheme, onToggleScheme }) {
 
         {/* Picks */}
         {picks.map((pick, i) => (
-          <div key={pick.id} style={{
-            background: t.card, borderRadius: 16, padding: 20,
-            marginBottom: 14, border: `1px solid ${t.borderLight}`,
-          }}>
-            <div style={{
-              fontSize: 13, color: t.accent,
-              fontFamily: "'Space Mono', monospace",
-              fontWeight: 700, marginBottom: 14, letterSpacing: 1,
-            }}>{NUM[i]} PICK</div>
-
-            <input
-              type="text" value={pick.title}
-              onChange={e => updatePick(pick.id, "title", e.target.value)}
-              placeholder="ポッドキャスト名"
-              maxLength={80}
-              style={{
-                width: "100%", boxSizing: "border-box",
-                fontFamily: "'Sora', sans-serif", fontSize: 15,
-                padding: "10px 14px", background: t.input,
-                border: `1px solid ${t.border}`, borderRadius: 8,
-                color: t.textInput, outline: "none", marginBottom: 8,
-              }}
-            />
-
-            <input
-              type="url" value={pick.url}
-              onChange={e => updatePick(pick.id, "url", e.target.value)}
-              placeholder="リンク（任意 / 番組サイト等。Apple・Spotifyは自動）"
-              style={{
-                width: "100%", boxSizing: "border-box",
-                fontFamily: "'Space Mono', monospace", fontSize: 12,
-                padding: "10px 14px", background: t.input,
-                border: `1px solid ${t.border}`, borderRadius: 8,
-                color: t.urlText, outline: "none", marginBottom: 8,
-              }}
-            />
-
-            <textarea
-              value={pick.reason}
-              onChange={e => updatePick(pick.id, "reason", e.target.value)}
-              placeholder="おすすめの理由（任意）"
-              maxLength={140} rows={2}
-              style={{
-                width: "100%", boxSizing: "border-box",
-                fontFamily: "'Sora', sans-serif", fontSize: 13,
-                padding: "10px 14px", background: t.input,
-                border: `1px solid ${t.border}`, borderRadius: 8,
-                color: t.reasonText, outline: "none", resize: "none",
-              }}
-            />
-            <div style={{ textAlign: "right", fontSize: 11, color: t.counter, marginTop: 2 }}>
-              {pick.reason.length}/140
-            </div>
-          </div>
+          <EditorPick key={pick.id} pick={pick} index={i} theme={t} updatePick={updatePick} NUM={NUM} />
         ))}
 
         {/* Actions */}
         <div style={{ display: "flex", gap: 10, marginTop: 20, flexWrap: "wrap" }}>
           <button
             disabled={!isValid}
-            onClick={() => {
-              if (!isValid) return;
-              const url = new URL(window.location);
-              url.searchParams.set("d", encodeState(name.trim(), filledPicks));
-              url.hash = "";
-              window.location.href = url.toString();
-            }}
+            onClick={onPreview}
             style={{
               flex: 1, minWidth: 130,
               fontFamily: "'Sora', sans-serif", fontSize: 14, fontWeight: 600,
@@ -591,45 +762,128 @@ function Editor({ scheme, onToggleScheme }) {
 }
 
 // ─── Root ───────────────────────────────────────────────────
+const EMPTY_PICKS = () => [
+  { id: 0, title: "", reason: "", url: "" },
+  { id: 1, title: "", reason: "", url: "" },
+  { id: 2, title: "", reason: "", url: "" },
+];
+
 export default function App() {
   const { scheme, toggleScheme } = useColorScheme();
-  const [viewData, setViewData] = useState(null);
   const [mode, setMode] = useState("loading");
+  const [isOwnPreview, setIsOwnPreview] = useState(false);
 
+  // Editor state (lifted up so it survives preview ↔ edit toggle)
+  const [name, setName] = useState("");
+  const [picks, setPicks] = useState(EMPTY_PICKS);
+
+  // View data (from URL or preview)
+  const [viewData, setViewData] = useState(null);
+
+  // Initial load
   useEffect(() => {
     const link = document.createElement("link");
     link.rel = "stylesheet";
     link.href = FONTS_URL;
     document.head.appendChild(link);
 
-    // Migrate old #hash URLs to ?d= and redirect
-    const hash = window.location.hash.slice(1);
-    if (hash) {
-      const data = decodeState(hash);
-      if (data && data.picks.length > 0) {
-        const url = new URL(window.location);
-        url.searchParams.set("d", hash);
-        url.hash = "";
-        window.location.replace(url.toString());
-        return;
+    (async () => {
+      // Migrate old #hash URLs to ?d= (v2 compressed) and redirect
+      const hash = window.location.hash.slice(1);
+      if (hash) {
+        const data = await decodeState(hash, null);
+        if (data && data.picks.length > 0) {
+          const encoded = await encodeState(data.name, data.picks);
+          const url = new URL(window.location);
+          url.searchParams.set("v", "2");
+          url.searchParams.set("d", encoded);
+          url.hash = "";
+          window.location.replace(url.toString());
+          return;
+        }
       }
-    }
 
-    const param = new URLSearchParams(window.location.search).get("d");
-    if (param) {
-      const data = decodeState(param);
-      if (data && data.picks.length > 0) {
-        setViewData(data);
-        setMode("view");
-        return;
+      const params = new URLSearchParams(window.location.search);
+      const param = params.get("d");
+      const version = params.get("v");
+      if (param) {
+        const data = await decodeState(param, version);
+        if (data && data.picks.length > 0) {
+          setViewData(data);
+          setIsOwnPreview(false);
+          setMode("view");
+          return;
+        }
       }
-    }
-    setMode("edit");
+      setMode("edit");
+    })();
   }, []);
+
+  // Handle browser back/forward
+  useEffect(() => {
+    const handlePopState = async () => {
+      const params = new URLSearchParams(window.location.search);
+      const param = params.get("d");
+      if (param) {
+        const data = await decodeState(param, params.get("v"));
+        if (data && data.picks.length > 0) {
+          setViewData(data);
+          setMode("view");
+          return;
+        }
+      }
+      setMode("edit");
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
+
+  // Preview: switch to card view without page reload
+  const handlePreview = async () => {
+    const filled = picks.filter(p => p.title.trim());
+    if (!name.trim() || filled.length === 0) return;
+    const encoded = await encodeState(name.trim(), filled);
+    const url = new URL(window.location);
+    url.searchParams.set("v", "2");
+    url.searchParams.set("d", encoded);
+    history.pushState(null, "", url.toString());
+    setViewData({ name: name.trim(), picks: filled });
+    setIsOwnPreview(true);
+    setMode("view");
+  };
+
+  // Back to editor (preserves state)
+  const handleBackToEdit = () => {
+    history.pushState(null, "", window.location.pathname);
+    setMode("edit");
+  };
+
+  // Create your own (resets state)
+  const handleCreateOwn = () => {
+    setName("");
+    setPicks(EMPTY_PICKS);
+    history.pushState(null, "", window.location.pathname);
+    setMode("edit");
+  };
 
   if (mode === "loading") return null;
   if (mode === "view" && viewData) {
-    return <CardView name={viewData.name} picks={viewData.picks} scheme={scheme} onToggleScheme={toggleScheme} />;
+    return (
+      <CardView
+        name={viewData.name} picks={viewData.picks}
+        scheme={scheme} onToggleScheme={toggleScheme}
+        isOwnPreview={isOwnPreview}
+        onBackToEdit={handleBackToEdit}
+        onCreateOwn={handleCreateOwn}
+      />
+    );
   }
-  return <Editor scheme={scheme} onToggleScheme={toggleScheme} />;
+  return (
+    <Editor
+      name={name} setName={setName}
+      picks={picks} setPicks={setPicks}
+      scheme={scheme} onToggleScheme={toggleScheme}
+      onPreview={handlePreview}
+    />
+  );
 }
