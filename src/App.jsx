@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { encodeState, decodeState as decodeStateRaw } from "./codec.js";
 
 const FONTS_URL = "https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Sora:wght@300;400;500;600;700&display=swap";
 
@@ -60,44 +61,14 @@ function ThemeToggle({ scheme, onToggle, accentColor }) {
   );
 }
 
-// ─── State encoding (v2: deflate-raw + array) ──────────────
-async function encodeState(name, picks) {
-  const arr = [name, picks.map(p => [p.title, p.reason || "", p.url || ""])];
-  const json = new TextEncoder().encode(JSON.stringify(arr));
-  const cs = new CompressionStream("deflate-raw");
-  const writer = cs.writable.getWriter();
-  writer.write(json);
-  writer.close();
-  const buf = await new Response(cs.readable).arrayBuffer();
-  return btoa(String.fromCharCode(...new Uint8Array(buf)));
-}
-
+// ─── Decode with id (App needs id for React keys) ──────────
 async function decodeState(encoded, version) {
-  try {
-    if (version === "2") {
-      // v2: deflate-raw compressed array format
-      const bytes = Uint8Array.from(atob(encoded), c => c.charCodeAt(0));
-      const ds = new DecompressionStream("deflate-raw");
-      const writer = ds.writable.getWriter();
-      writer.write(bytes);
-      writer.close();
-      const arr = JSON.parse(await new Response(ds.readable).text());
-      return {
-        name: arr[0] || "",
-        picks: (arr[1] || []).map((p, i) => ({
-          id: i, title: p[0] || "", reason: p[1] || "", url: p[2] || "",
-        })),
-      };
-    }
-    // v1: legacy JSON format (backward compat)
-    const json = JSON.parse(decodeURIComponent(escape(atob(encoded))));
-    return {
-      name: json.n || "",
-      picks: (json.p || []).map((p, i) => ({
-        id: i, title: p.t || "", reason: p.r || "", url: p.u || "",
-      })),
-    };
-  } catch { return null; }
+  const data = await decodeStateRaw(encoded, version);
+  if (!data) return null;
+  return {
+    ...data,
+    picks: data.picks.map((p, i) => ({ id: i, ...p })),
+  };
 }
 
 // ─── URL helpers ───────────────────────────────────────────

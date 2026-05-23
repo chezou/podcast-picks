@@ -1,43 +1,9 @@
 import satori from "satori";
 import { Resvg, initWasm } from "@resvg/resvg-wasm";
 import resvgWasm from "@resvg/resvg-wasm/index_bg.wasm";
+import { decodeState } from "./codec.js";
 
 let wasmInitialized = false;
-
-// ─── Decode the shared state from ?d= param (v1 + v2) ───────
-async function decodeState(encoded, version) {
-  try {
-    if (version === "2") {
-      // v2: deflate-raw compressed array format
-      const bytes = Uint8Array.from(atob(encoded), c => c.charCodeAt(0));
-      const ds = new DecompressionStream("deflate-raw");
-      const writer = ds.writable.getWriter();
-      writer.write(bytes);
-      writer.close();
-      const arr = JSON.parse(await new Response(ds.readable).text());
-      return {
-        name: arr[0] || "",
-        picks: (arr[1] || []).map((p) => ({
-          title: p[0] || "",
-          reason: p[1] || "",
-          url: p[2] || "",
-        })),
-      };
-    }
-    // v1: legacy JSON format
-    const json = JSON.parse(decodeURIComponent(escape(atob(encoded))));
-    return {
-      name: json.n || "",
-      picks: (json.p || []).map((p) => ({
-        title: p.t || "",
-        reason: p.r || "",
-        url: p.u || "",
-      })),
-    };
-  } catch {
-    return null;
-  }
-}
 
 // ─── Fetch Google Font for Satori ────────────────────────────
 async function loadGoogleFont(family, weight) {
