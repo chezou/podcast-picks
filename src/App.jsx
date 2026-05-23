@@ -244,7 +244,12 @@ function LinkPill({ href, icon, label, accentColor, isDark }) {
 
 // ─── Single podcast card (uses hook for fetch) ─────────────
 function PodcastCard({ pick, index, total, palette: p, isDark, revealed }) {
-  const { artwork, appleUrl, loading } = usePodcastInfo(pick.title);
+  const { artwork, appleUrl, loading, name: matchedName } = usePodcastInfo(pick.title);
+
+  // Only show artwork when iTunes name matches the title exactly (normalized)
+  const norm = s => s.toLowerCase().replace(/[\s\-_.:!?]+/g, "");
+  const isExactMatch = matchedName && norm(matchedName) === norm(pick.title);
+  const displayArtwork = isExactMatch ? artwork : null;
 
   const userUrl = pick.url ? normalizeUrl(pick.url) : null;
   const spotifyUrl = spotifySearchUrl(pick.title);
@@ -275,7 +280,7 @@ function PodcastCard({ pick, index, total, palette: p, isDark, revealed }) {
 
       <div style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
         <ArtworkImg
-          src={artwork} loading={loading} size={64} radius={14}
+          src={displayArtwork} loading={loading} size={64} radius={14}
           accentColor={p.accent}
           loadingBg={isDark ? "#1a1a36" : "#e0dee4"}
           fallbackBg={`${p.accent}${isDark ? "12" : "0c"}`}
